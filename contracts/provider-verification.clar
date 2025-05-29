@@ -1,111 +1,111 @@
-;; Provider Verification Contract
-;; Validates quantum biology practitioners
+;; Quantum Treatment Contract
+;; Records quantum biology therapies
 
 (define-constant CONTRACT_OWNER tx-sender)
-(define-constant ERR_UNAUTHORIZED (err u100))
-(define-constant ERR_PROVIDER_EXISTS (err u101))
-(define-constant ERR_PROVIDER_NOT_FOUND (err u102))
-(define-constant ERR_INVALID_CREDENTIALS (err u103))
+(define-constant ERR_UNAUTHORIZED (err u200))
+(define-constant ERR_TREATMENT_NOT_FOUND (err u201))
+(define-constant ERR_INVALID_PROVIDER (err u202))
+(define-constant ERR_INVALID_PATIENT (err u203))
 
-;; Provider data structure
-(define-map providers
-  { provider-id: principal }
+;; Treatment data structure
+(define-map treatments
+  { treatment-id: uint }
   {
-    name: (string-ascii 100),
-    license-number: (string-ascii 50),
-    specialization: (string-ascii 100),
-    quantum-certification: bool,
-    verification-date: uint,
-    status: (string-ascii 20)
-  }
-)
-
-;; Verification status tracking
-(define-map verification-history
-  { provider-id: principal, verification-id: uint }
-  {
-    verifier: principal,
-    verification-type: (string-ascii 50),
-    result: bool,
-    timestamp: uint,
+    provider-id: principal,
+    patient-id: principal,
+    treatment-type: (string-ascii 100),
+    quantum-frequency: uint,
+    duration-minutes: uint,
+    treatment-date: uint,
+    status: (string-ascii 20),
+    cost: uint,
     notes: (string-ascii 500)
   }
 )
 
-(define-data-var next-verification-id uint u1)
-
-;; Register a new quantum biology provider
-(define-public (register-provider
-  (provider-id principal)
-  (name (string-ascii 100))
-  (license-number (string-ascii 50))
-  (specialization (string-ascii 100))
-  (quantum-certification bool))
-  (begin
-    (asserts! (is-eq tx-sender CONTRACT_OWNER) ERR_UNAUTHORIZED)
-    (asserts! (is-none (map-get? providers { provider-id: provider-id })) ERR_PROVIDER_EXISTS)
-
-    (map-set providers
-      { provider-id: provider-id }
-      {
-        name: name,
-        license-number: license-number,
-        specialization: specialization,
-        quantum-certification: quantum-certification,
-        verification-date: block-height,
-        status: "pending"
-      }
-    )
-    (ok true)
-  )
+;; Treatment protocols
+(define-map treatment-protocols
+  { protocol-id: uint }
+  {
+    name: (string-ascii 100),
+    description: (string-ascii 500),
+    quantum-parameters: (string-ascii 200),
+    safety-level: uint,
+    approved: bool
+  }
 )
 
-;; Verify provider credentials
-(define-public (verify-provider
-  (provider-id principal)
-  (verification-type (string-ascii 50))
-  (result bool)
-  (notes (string-ascii 500)))
-  (let ((verification-id (var-get next-verification-id)))
-    (asserts! (is-eq tx-sender CONTRACT_OWNER) ERR_UNAUTHORIZED)
-    (asserts! (is-some (map-get? providers { provider-id: provider-id })) ERR_PROVIDER_NOT_FOUND)
+(define-data-var next-treatment-id uint u1)
+(define-data-var next-protocol-id uint u1)
 
-    (map-set verification-history
-      { provider-id: provider-id, verification-id: verification-id }
+;; Record a new quantum treatment
+(define-public (record-treatment
+  (provider-id principal)
+  (patient-id principal)
+  (treatment-type (string-ascii 100))
+  (quantum-frequency uint)
+  (duration-minutes uint)
+  (cost uint)
+  (notes (string-ascii 500)))
+  (let ((treatment-id (var-get next-treatment-id)))
+    (asserts! (or (is-eq tx-sender provider-id) (is-eq tx-sender CONTRACT_OWNER)) ERR_UNAUTHORIZED)
+
+    (map-set treatments
+      { treatment-id: treatment-id }
       {
-        verifier: tx-sender,
-        verification-type: verification-type,
-        result: result,
-        timestamp: block-height,
+        provider-id: provider-id,
+        patient-id: patient-id,
+        treatment-type: treatment-type,
+        quantum-frequency: quantum-frequency,
+        duration-minutes: duration-minutes,
+        treatment-date: block-height,
+        status: "completed",
+        cost: cost,
         notes: notes
       }
     )
 
-    (if result
-      (map-set providers
-        { provider-id: provider-id }
-        (merge (unwrap-panic (map-get? providers { provider-id: provider-id }))
-               { status: "verified" }))
-      (map-set providers
-        { provider-id: provider-id }
-        (merge (unwrap-panic (map-get? providers { provider-id: provider-id }))
-               { status: "rejected" }))
+    (var-set next-treatment-id (+ treatment-id u1))
+    (ok treatment-id)
+  )
+)
+
+;; Add treatment protocol
+(define-public (add-protocol
+  (name (string-ascii 100))
+  (description (string-ascii 500))
+  (quantum-parameters (string-ascii 200))
+  (safety-level uint))
+  (let ((protocol-id (var-get next-protocol-id)))
+    (asserts! (is-eq tx-sender CONTRACT_OWNER) ERR_UNAUTHORIZED)
+
+    (map-set treatment-protocols
+      { protocol-id: protocol-id }
+      {
+        name: name,
+        description: description,
+        quantum-parameters: quantum-parameters,
+        safety-level: safety-level,
+        approved: false
+      }
     )
 
-    (var-set next-verification-id (+ verification-id u1))
-    (ok verification-id)
+    (var-set next-protocol-id (+ protocol-id u1))
+    (ok protocol-id)
   )
 )
 
-;; Get provider information
-(define-read-only (get-provider (provider-id principal))
-  (map-get? providers { provider-id: provider-id })
+;; Get treatment details
+(define-read-only (get-treatment (treatment-id uint))
+  (map-get? treatments { treatment-id: treatment-id })
 )
 
-;; Check if provider is verified
-(define-read-only (is-provider-verified (provider-id principal))
-  (match (map-get? providers { provider-id: provider-id })
-    provider-data (is-eq (get status provider-data) "verified")
-    false
-  )
+;; Get treatment protocol
+(define-read-only (get-protocol (protocol-id uint))
+  (map-get? treatment-protocols { protocol-id: protocol-id })
+)
+
+;; Get treatments by provider
+(define-read-only (get-provider-treatment-count (provider-id principal))
+  (var-get next-treatment-id)
 )
